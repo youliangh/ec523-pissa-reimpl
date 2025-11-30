@@ -57,9 +57,9 @@ def init_seed(seed):
     # avoiding nondeterministic algorithms (see https://pytorch.org/docs/stable/notes/randomness.html)
     torch.use_deterministic_algorithms(True)
 
-# from utils.benchmark.commonsense_reasoning import eval_commonsense
-# from utils.benchmark.math_reasoning import eval_math
-# from utils.benchmark.xsum import eval_xsum
+from pissa.benchmark.commonsense_reasoning import eval_commonsense
+from pissa.benchmark.math_reasoning import eval_math
+from pissa.benchmark.xsum import eval_xsum
 
 from pissa.data import DEFAULT_PAD_TOKEN, make_pretokenize_data_module, make_data_module
 from pissa.utility import init_seed, easy_dump
@@ -259,7 +259,7 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     enable_pissa: bool = field(default=False, metadata={"help": "Enable Pissa"})
     pretokenize: bool = field(default=False, metadata={"help": "Pretokenize the dataset"})
     eval_test: Optional[bool] = field(
-        default=None,
+        default=True,
         metadata={"help": "Evaluate on test set"}
     )
 
@@ -316,7 +316,7 @@ def get_accelerate_model(args, checkpoint_dir):
 
     lora_target_modules = []
     if "llama" in args.model_name_or_path.lower():
-        lora_target_modules = ["q_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"]  # edit here!
+        lora_target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]  # edit here!
     elif "opt" in args.model_name_or_path.lower():
         lora_target_modules = ["q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2"]  # edit here!
     else:
@@ -495,7 +495,6 @@ def train():
     model, tokenizer = get_accelerate_model(args, checkpoint_dir)
 
     model.config.use_cache = False
-    report0('loaded model')
 
     if args.pretokenize:
         data_module = make_pretokenize_data_module(tokenizer=tokenizer, args=args)
@@ -565,7 +564,7 @@ def train():
             xsum_eval_cnt = 0
             xsum_eval_results = {}
             cache_dir = args.cache_dir
-            rogue_metric = evaluate.load("/data/peft_finetuning/rouge.py")  # use local
+            rouge_metric = evaluate.load("rouge")  # use local
             source_max_len = args.source_max_len
 
             def on_evaluate(self, args, state, control, **kwargs):

@@ -314,21 +314,6 @@ def load_data(dataset_name, args) -> DatasetDict:
         else:
             dataset_dict['train'] = raw_dataset['train']
         return dataset_dict
-    elif dataset_name == "stack_exchange_paired":
-        args.dataset_format = "stack_exchange"
-        split = f"train[:{args.max_train_samples}]" if args.max_train_samples else None
-        raw_dataset = load_dataset(
-            "/data/dataset/stack-exchange-paired",
-            data_dir="data/finetune",
-            split=split,
-            num_proc=4 if not False else None,
-            streaming=False,
-        )
-        if args.max_train_samples:
-            dataset_dict['train'] = raw_dataset
-        else:
-            dataset_dict['train'] = raw_dataset['train']
-        return dataset_dict
     else:
         if os.path.exists(dataset_name):
             try:
@@ -365,11 +350,6 @@ def format_dataset(tokenizer, dataset, dataset_format, args):
         dataset = dataset.map(extract_alpaca_dataset, remove_columns=['instruction'])
         print(dataset)
         return dataset
-    elif dataset_format == 'stack_exchange' or (dataset_format is None and args.dataset == 'stack_exchange_paired'):
-        dataset = dataset.map(lambda x: {
-            'input': "Question: {question}\n\n".format(question=x['question']),
-            'output': "Answer: {response}{eos_token}".format(response=x['response_j'], eos_token=tokenizer.eos_token),
-        })
     elif dataset_format == 'input-output':
         # leave as is
         pass
