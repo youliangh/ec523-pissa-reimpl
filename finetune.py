@@ -133,7 +133,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ModelArguments:
     model_name_or_path: Optional[str] = field(
-        default="EleutherAI/pythia-12b"
+        default="meta-llama/Llama-2-7b-hf"
     )
     trust_remote_code: Optional[bool] = field(
         default=False,
@@ -147,7 +147,7 @@ class DataArguments:
         default=1024, metadata={"help": "Size of validation dataset."}
     )
     max_train_samples: Optional[int] = field(
-        default=10000,
+        default=100000,
         metadata={
             "help": "For debugging purposes or quicker training, truncate the number of training examples to this "
                     "value if set."
@@ -208,11 +208,11 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
         metadata={"help": "How many bits to use."}
     )
     lora_r: int = field(
-        default=64,
+        default=128,
         metadata={"help": "Lora R dimension."}
     )
     lora_alpha: float = field(
-        default=16,
+        default=128,
         metadata={"help": " Lora alpha."}
     )
     lora_dropout: float = field(
@@ -229,10 +229,13 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
     )
     output_dir: str = field(default='./output', metadata={"help": 'The output dir for logs and checkpoints'})
     optim: str = field(default='paged_adamw_32bit', metadata={"help": 'The optimizer to be used'})
-    per_device_train_batch_size: int = field(default=1, metadata={
+    per_device_train_batch_size: int = field(default=64, metadata={
         "help": 'The training batch size per GPU. Increase for better speed.'})
-    gradient_accumulation_steps: int = field(default=16, metadata={
+    gradient_accumulation_steps: int = field(default=2, metadata={
         "help": 'How many gradients to accumulate before to perform an optimizer step'})
+    per_device_eval_batch_size: int = field(default=32, metadata={
+        "help": 'The evaluation batch size per GPU. Increase for better speed.'})
+    
     max_steps: int = field(default=-1, metadata={"help": 'How many optimizer update steps to take'})
     weight_decay: float = field(default=0.0, metadata={
         "help": 'The L2 weight decay rate of AdamW'})  # use lora dropout instead for regularization if needed
@@ -245,7 +248,7 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
                                          metadata={"help": 'Use gradient checkpointing. You want to use this.'})
     do_train: bool = field(default=True, metadata={"help": 'To train or not to train, that is the question?'})
     do_eval: bool = field(default=True, metadata={"help": 'To eval'})
-    lr_scheduler_type: str = field(default='constant', metadata={
+    lr_scheduler_type: str = field(default='cosine', metadata={
         "help": 'Learning rate schedule. Constant a bit better than cosine, and has advantage for analysis'})
     warmup_ratio: float = field(default=0.03, metadata={"help": 'Fraction of steps to do a warmup for'})
     logging_steps: int = field(default=10,
@@ -537,7 +540,7 @@ def train():
 
                 trainer.model.eval()
                 for dataset in ["AddSub", "AQuA", "MAWPS", "SVAMP", "gsm8k"]:
-                    results[f"{dataset}_acc"] = eval_math(model, tokenizer, dataset, batch_size=2 if dataset=="AQuA" else 4)
+                    results[f"{dataset}_acc"] = eval_math(model, tokenizer, dataset, batch_size=args.per_device_eval_batch_size)
                 trainer.log(results)
 
                 self.math_eval_results[self.math_eval_cnt * args.eval_steps] = results
@@ -554,7 +557,7 @@ def train():
 
                 trainer.model.eval()
                 for dataset in ["boolq", "siqa", "arc_c", "arc_e", "winogrande"]:
-                    results[f"{dataset}_acc"] = eval_math(model, tokenizer, dataset, batch_size=4)
+                    results[f"{dataset}_acc"] = eval_math(model, tokenizer, dataset, batch_size=args.per_device_eval_batch_size)
                 trainer.log(results)
 
                 self.cs_eval_results[self.cs_eval_cnt * args.eval_steps] = results
@@ -576,7 +579,7 @@ def train():
                 torch.use_deterministic_algorithms(False)
                 model.config.use_cache = True
 
-                results = eval_xsum(model, tokenizer, source_max_len=self.source_max_len, cache_dir=self.cache_dir, batch_size=8)
+                results = eval_xsum(model, tokenizer, source_max_len=self.source_max_len, cache_dir=self.cache_dir, batch_size=args.per_device_eval_batch_size)
 
                 torch.use_deterministic_algorithms(True)
                 model.config.use_cache = False
