@@ -191,6 +191,10 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
         default=False,
         metadata={"help": "Finetune the entire model without adapters."}
     )
+    mode: str = field(
+        default="lora",
+        metadata={"help": "One of `lora`, `pissa`."}
+    )
     adam8bit: bool = field(
         default=False,
         metadata={"help": "Use 8-bit adam."}
@@ -303,8 +307,11 @@ def get_accelerate_model(args, checkpoint_dir):
     max_memory = {i: max_memory for i in range(n_gpus)}
     device_map = "auto"
 
+    # Mode check
     if args.full_finetune:
-        assert args.bits == 16
+        assert args.bits == 16, "Full finetuning only supported for 16-bit."
+    else:
+        assert args.mode in ["lora", "pissa"], "--mode must be one of `lora`, `pissa`."
 
     model = AutoModelForCausalLM.from_pretrained(
         args.model_name_or_path,
@@ -324,7 +331,9 @@ def get_accelerate_model(args, checkpoint_dir):
         lora_target_modules = ["q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2"]  # edit here!
     else:
         raise NotImplementedError("Model not supported yet.")
-    lora_weights = prepare_model(model, target_modules=lora_target_modules, lora_rank=args.lora_r, bits=args.bits)
+    
+    if not args.full_finetune:
+        lora_weights = prepare_model(model, target_modules=lora_target_modules, lora_rank=args.lora_r, bits=args.bits, mode=args.mode)
 
     # Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(
@@ -378,6 +387,7 @@ def get_accelerate_model(args, checkpoint_dir):
 
     for name, module in model.named_modules():
         if isinstance(module, LoraLayer):
+            assert not args.full_finetune, "LoraLayer found in full finetune mode. This should not happen."
             weight_t = torch.bfloat16
             module = module.to(weight_t)
 
@@ -388,12 +398,19 @@ def get_accelerate_model(args, checkpoint_dir):
             target = ".".join(name.split(".")[-5:])
             adapter_name = "default"
             current_device = torch.get_device(module.lora_A[adapter_name].weight)
-            if target in lora_weights:
-                u, s, v = lora_weights.pop(target)
-                u = u @ s
-                v = s @ v
-                module.lora_A[adapter_name].weight = torch.nn.Parameter(v.to(weight_t).to(current_device))
-                module.lora_B[adapter_name].weight = torch.nn.Parameter(u.to(weight_t).to(current_device))
+
+            # In Pissa, we have already decomposed and stored the weights.
+            if args.mode == "pissa":
+                if target in lora_weights:
+                    u, s, v = lora_weights.pop(target)
+                    u = u @ s
+                    v = s @ v
+                    module.lora_A[adapter_name].weight = torch.nn.Parameter(v.to(weight_t).to(current_device))
+                    module.lora_B[adapter_name].weight = torch.nn.Parameter(u.to(weight_t).to(current_device))
+            elif args.mode == "lora":
+                pass
+            else:
+                raise NotImplementedError("Mode not supported.")
 
         if 'norm' in name:
             module = module.to(torch.bfloat16)

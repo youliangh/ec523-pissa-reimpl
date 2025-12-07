@@ -43,6 +43,7 @@ CUDA_VISIBLE_DEVICES="0" python finetune.py \
     --bf16 \
     --bits 16 \
     --full_finetune False \
+    --mode lora \
     --warmup_ratio 0.03 \
     --lr_scheduler_type cosine \
     --source_max_len 128 \

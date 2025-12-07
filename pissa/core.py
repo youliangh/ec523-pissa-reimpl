@@ -33,7 +33,8 @@ def quantize_module(model, name: str, module: torch.nn.Module, bits: int):
 
 def prepare_model(model, target_modules: List[str],
                   lora_rank: int=32,
-                  bits: int=4):
+                  bits: int=4,
+                  mode: str="pissa"):
         loaded_in_kbit = getattr(model, "is_loaded_in_8bit", False) or getattr(model, "is_loaded_in_4bit", False)
         if loaded_in_kbit:
             raise NotImplementedError("Not supported for loading in 4-bit or 8-bit yet.")
@@ -61,20 +62,22 @@ def prepare_model(model, target_modules: List[str],
         lora_weights = {}
 
         for name, module in progress_bar:
-            original_weight_type = module.weight.data.dtype
-            original_weight = module.weight.data.to(torch.float32)
+            if mode == "pissa":
+                original_weight_type = module.weight.data.dtype
+                original_weight = module.weight.data.to(torch.float32)
+                u, s, v = torch.linalg.svd(original_weight, full_matrices=False)
+                new_weight = u[:, lora_rank:] @ torch.diag(s[lora_rank:]) @ v[lora_rank:, :]
+                module.weight.data = new_weight.contiguous().to(original_weight_type)
 
-            u, s, v = torch.linalg.svd(original_weight, full_matrices=False)
-            new_weight = u[:, lora_rank:] @ torch.diag(s[lora_rank:]) @ v[lora_rank:, :]
-            module.weight.data = new_weight.contiguous().to(original_weight_type)
+                quantize_module(model, name, module, bits)
 
-            quantize_module(model, name, module, bits)
-
-            lora_weights[name] = ((
-                u[:, :lora_rank].to(original_weight_type),
-                torch.diag(torch.sqrt(s[:lora_rank])).to(original_weight_type),
-                v[:lora_rank, :].to(original_weight_type)
-            ))
+                lora_weights[name] = ((
+                    u[:, :lora_rank].to(original_weight_type),
+                    torch.diag(torch.sqrt(s[:lora_rank])).to(original_weight_type),
+                    v[:lora_rank, :].to(original_weight_type)
+                ))
+            elif mode == "lora":
+                quantize_module(model, name, module, bits)
 
         return lora_weights
         
