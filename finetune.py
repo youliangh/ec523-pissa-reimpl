@@ -325,7 +325,7 @@ def get_accelerate_model(args, checkpoint_dir):
     model.config.torch_dtype = torch.bfloat16
 
     lora_target_modules = []
-    if "llama" in args.model_name_or_path.lower():
+    if "llama" in args.model_name_or_path.lower() or "gemma" in args.model_name_or_path.lower():
         lora_target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]  # edit here!
     elif "opt" in args.model_name_or_path.lower():
         lora_target_modules = ["q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2"]  # edit here!
