@@ -35,11 +35,14 @@ dataset="MetaMath"
 --lora_r 128
 --lora_alpha 128
 
-# 2e-5 per the paper
+# use --mode option to run lora or pissa
+# this option comes to effect only when --full_finetune=False
+--mode ["pissa"|"lora"]
+
 --learning_rate 0.0002
 
 # batch size should be 128 per the paper
-# NOTE: batch size = per_device_train_batch_size * gradient_accumulation_steps * num_gpus = 128
+# NOTE: batch size = per_device_train_batch_size * gradient_accumulation_steps = 128
 CUDA_VISIBLE_DEVICES="0"
 --per_device_train_batch_size 64
 --gradient_accumulation_steps 2
